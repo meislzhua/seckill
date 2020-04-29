@@ -1,7 +1,7 @@
 import Service from "./Service";
 import S1 from "./solution/S1";
-import S2 from "./solution/S2";
 import S3 from "./solution/S3";
+import S2 from "./solution/S2";
 
 var express = require('express');
 var app = express();
@@ -20,7 +20,7 @@ app.get('/init', async (req, res) => {
 });
 
 app.get('/getSale', async (req, res) => {
-    let result = await service.getSale();
+    let result = await service.getSale(service.getRandomCount(), service.getRandomUser());
     res.send({code: 200, result});
 });
 

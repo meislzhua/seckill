@@ -1,11 +1,18 @@
-import Service from "../Service";
+import Service, {SecKillStatus} from "../Service";
 
 export default abstract class Solution {
     service: Service;
 
-    abstract async secKill(userID, saleId);
+    abstract async secKill(userId: string, saleId: string, number: number): Promise<SecKillStatus>;
 
-    abstract async initSecKill(count, saleId);
+    abstract async initSecKill(saleId: string);
 
+    setService(service: Service) {
+        this.service = service;
+    }
+
+    getMessage(): String {
+        return null;
+    }
 }
 
