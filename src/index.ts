@@ -1,26 +1,46 @@
-import Service from "./Service";
+import Service, {SecKillStatus} from "./Service";
 import S1 from "./solution/S1";
 import cache from "./cache";
-import S2 from "./solution/S2";
 import S3 from "./solution/S3";
+import S2 from "./solution/S2";
 
 (async () => {
-    let tmp, tmpList = [], res = {}, now;
-    let s1 = new Service(new S1());
-    await s1.init(Date.now(), Date.now() + 1000, 10);
+    const tmp = 40000;      //模拟并发的次数
+    let tmpList = [];       //用于储存模拟并发的请求
 
-    tmp = 10000, tmpList = [];
-    console.log("共个数", s1.count, "循环次数", tmp);
+    //选择需要的算法并初始化
+    const service = new Service(new S1());
+    await service.init(Date.now(), Date.now() + 5000, 100, 1);
+    console.log("算法", service.solution["__proto__"].constructor.name);
+    console.log("共个数", service.count, "每人最多抢购数", service.singleMax, "循环次数", tmp);
     console.time("共耗时"), console.time("循环结束耗时");
-    while (tmp--) {
-        tmpList.push(s1.getSale())
-    }
+
+    //将请求平均分布在一秒内,避免node.js顺序执行的情况
+    let loop = Promise.all(new Array(tmp).fill(0).map(value => new Promise(res => {
+        setTimeout(() => {
+            tmpList.push(service.getSale(service.getRandomCount(), service.getRandomUser()));
+            res()
+        }, Math.random() * 100 | 0)
+    })));
+
     console.timeEnd(`循环结束耗时`);
 
-    tmp = await Promise.all(tmpList);
+    //统计请求得出的结果
+    await loop;
+    tmpList = await Promise.all(tmpList);
     console.timeEnd("共耗时");
-    tmp.forEach(v => res[v] = (res[v] ? res[v] + 1 : 1));
-    console.log("成功数", res[Service.secKillStatus.Success], "失败数", res[Service.secKillStatus.Fail], "不在时间范围", res[Service.secKillStatus.NotInTime] || 0);
-})();
+    let res = tmpList.reduce((p, v) => (p[v] = (p[v] || 0) + 1, p), {});
 
-// cache.redis.quit();
+    console.log("共售出", await cache.redis.hget(Service.getRedisKey(Service.saleId), "soldOut"))
+    console.log("请求分布",
+        Object.keys(SecKillStatus)
+            .filter(v => res[SecKillStatus[v]])
+            .map(v => `[${v} : ${res[SecKillStatus[v]]}] `)
+            .join(" ")
+    );
+
+    let extra = service.solution.getMessage();
+    extra && console.log("额外信息", extra)
+
+
+})();
