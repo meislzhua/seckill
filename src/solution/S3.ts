@@ -1,28 +1,40 @@
 import Solution from "./Solution";
 import cache from "../cache";
-import Service from "../Service";
+import Service, {SecKillStatus} from "../Service";
+
+const fs = require("fs");
+const path = require("path");
 
 export default class S3 extends Solution {
-    i = 2;
-
-    async initSecKill(count, saleId) {
-        await cache.redis.del(`${this.service.getRedisKey(saleId)}:s3:access`);
+    async initSecKill(saleId) {
+        //初始化脚本
+        if (!this.id) {
+            let command = (await fs.promises.readFile(path.resolve(__dirname, "../../seckill.lua"))).toString();
+            this.id = await cache.redis.script("load", command);
+            console.log("脚本加载完毕", this.id)
+        }
     }
 
+    id = null;
 
-    async secKill(userID, saleId) {
+    async secKill(userID, saleId, number) {
+        const saleInfo = await this.service.getSaleInfo(saleId), now = Date.now();
 
-        let redisKey = this.service.getRedisKey(saleId);
-        let redisKey_access = `${redisKey}:s3:access`;
-        let command = `
-        local t = redis.call('time');
-        local time = t[1]*1000 + t[2]/1000;
-        local info = redis.call('hmget',KEYS[1],'startTime','endTime','count');
-        if (time < tonumber(info[1]) or tonumber(info[2]) < time) then return 2 end;
-        return redis.call('scard',KEYS[2]) < tonumber(info[3]) and redis.call('sadd',KEYS[2],'${userID}')`;
-        let res = await cache.redis.eval(command, 2,redisKey,redisKey_access);
-        if (res == 2) return Service.secKillStatus.NotInTime;
-        return res ? Service.secKillStatus.Success : Service.secKillStatus.Fail;
+        //判断不适宜抢购的情况
+        if (now < saleInfo.startTime || now > saleInfo.endTime) return SecKillStatus.NotInTime;         //不在情况时间内
+        if (number + saleInfo.soldOut > saleInfo.count) return SecKillStatus.StockNotSufficient;        //抢购数量不足
+
+        //构建脚本参数,具体需求什么参数,由自己写的lua脚本确定
+        const keys = [number, userID];
+        const argv = [
+            Service.getRedisKey(saleId),
+            Service.getRedisSoldOutKey(saleId),
+            SecKillStatus.Success,
+            SecKillStatus.StockNotSufficient,
+            SecKillStatus.Over,
+        ];
+
+        return await cache.redis.evalsha(this.id, keys.length, ...keys, ...argv)  * 1;
     }
 
 }
