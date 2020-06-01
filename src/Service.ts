@@ -1,91 +1,57 @@
 import Solution from "./solution/Solution";
-import cache from "./cache";
+import SecKillInfo from "./SecKillInfo";
 
+//秒杀请求返回类型
 export enum SecKillStatus {
-    Success = 1,
-    Fail = 2,
-    NotInTime = 3,
-    StockNotSufficient = 4,
-    Over = 5,
+    Success = 1,                //成功
+    Fail = 2,                   //失败
+    NotInTime = 3,              //不在秒杀范围内
+    StockNotSufficient = 4,     //库存不足
+    Over = 5,                   //超出抢购限制
 }
 
 
 export default class Service {
-    solution: Solution = null;
-    startTime = null;
-    endTime = null;
-    count = null;
-    singleMax = null;
-    soldOut = null;
+    solution: Solution = null;      //选择的算法
 
-    userList = [];
+    secKillInfo: SecKillInfo = null;           //测试用属性: 缓存秒杀信息
+    userList = [];                  //测试用属性: 随即生成的用户id列表
 
-    //这里默认随意默认一个id,不再从其他地方获取ID,方便演示
-    static saleId = "MeIsLZHua";
-
-
+    //构建对应服务时,必须加入对应的算法
     constructor(solution: Solution) {
         this.solution = solution;
-        this.solution.setService(this);
     }
 
-    async init(startTime = Date.now(), endTime = Date.now(), count = 10, singleMax = 1, saleId = Service.saleId) {
-        let redisKey = `${cache.secKillPrefix}:${saleId}`;
-        let key_soldOut = `${cache.secKillPrefix}:${saleId}:soldOut`;
+    //初始化
+    async init(startTime = Date.now()-1, endTime = Date.now()+5000, count = 10, singleMax = 1, secKillId = SecKillInfo.defaultId) {
+        const randomUserCoefficient = 5;        //生成随即用户系数 (倍)[count的X倍]
 
-        this.userList = new Array(count * 5).fill(1).map(v => Math.random());
+        //生成随即用户
+        this.userList = new Array(count * randomUserCoefficient).fill(1).map(v => Math.random());
 
-        await cache.redis.multi()
-            .del(redisKey)
-            .del(key_soldOut)
-            .hset(redisKey, "startTime", startTime, "endTime", endTime, "count", count, "singleMax", singleMax, "soldOut", 0)
-            .exec();
-        await this.solution.initSecKill(saleId);
-        this.startTime = startTime;
-        this.endTime = endTime;
-        this.count = count;             //本次秒杀总数
-        this.singleMax = singleMax;     //单人秒杀最多购买数
+        //生成新的秒杀
+        this.secKillInfo = new SecKillInfo(secKillId, startTime, endTime, count, singleMax);
+
+        //具体算法部分初始化
+        await this.solution.init(this.secKillInfo);
     }
 
-    async setSold(userId: string, saleId: string, number: number): Promise<number> {
-        return await cache.redis.hincrby(Service.getRedisSoldOutKey(saleId), userId, number) * 1;
-    }
-
-    async getSold(userId, saleId = Service.saleId) {
-        return cache.redis.hget(Service.getRedisSoldOutKey(saleId), userId) * 1;
-    }
-
-    async getSaleInfo(saleId: string = cache.saleId) {
-        let redisKey = Service.getRedisKey(saleId);
-        let data = await cache.redis.hmget(redisKey, "startTime", "endTime", "count", "singleMax", "soldOut");
-        //todo 抽象化SaleInfo
-        return {
-            startTime: data[0] * 1,
-            endTime: data[1] * 1,
-            count: data[2] * 1,
-            singleMax: data[3] * 1,
-            soldOut: data[4] * 1,
-        }
-    }
-
-    static getRedisKey(saleId) {
-        return `${cache.secKillPrefix}:${saleId}`
-    }
-
-    static getRedisSoldOutKey(saleId) {
-        return `${Service.getRedisKey(saleId)}:soldOut`;
-    }
-
-    async getSale(number: number, userId: string, saleId: string = cache.saleId) {
+    async secKill( userId: string, secKillId: string,number: number) {
         //执行执行具体算法
-        return await this.solution.secKill(userId, saleId, number);
+        return await this.solution.secKill(userId, secKillId, number);
     }
 
+    /**
+     * 测试用方法: 获取一个随机用户
+     */
     getRandomUser() {
         return this.userList[this.userList.length * Math.random() | 0];
     }
 
+    /**
+     * 测试用方法: 随机获取一个1至singleMax的数字
+     */
     getRandomCount(): number {
-        return (this.singleMax + 1) * Math.random() | 0 || 1;
+        return (this.secKillInfo.singleMax + 1) * Math.random() | 0 || 1;
     }
 }
