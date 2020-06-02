@@ -14,7 +14,6 @@ WORKDIR  /app
 
 #安装基本依赖 并编译
 RUN npm install -g cnpm --registry=https://registry.npm.taobao.org \
-    && cnpm install -g typescript \
     && cnpm i \
     && npm run build
 
