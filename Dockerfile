@@ -6,6 +6,7 @@ MAINTAINER secKill <444811296@qq.com>
 
 #复制网站首页文件至镜像中web站点下
 COPY src /app/src
+COPY src /app/test
 COPY package.json /app
 COPY tsconfig.json /app
 
